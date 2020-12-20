@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# parameters
+WPTLIST='waypoints6.txt'
+# WPTLIST='circle.txt'
+# WPTLIST='rectangle.txt'
+# WPTLIST='square.txt'
+
+# change dir to the location of the shell script
+APPDIR=`dirname $(readlink -f $0)`
+cd $APPDIR
+
+# copy waypoint list to the ROS working directory
+cp ../waypoints/$WPTLIST ~/.ros/waypoints6.txt
+#cp ../waypoints/$WPTLIST ~/.ros/new.txt
+#cp ../waypoints/$WPTLIST ~/.ros/default.txt
+
+# launch the ROS node
+roslaunch ../launch/turftank_new.launch

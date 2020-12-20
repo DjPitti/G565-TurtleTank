@@ -1,0 +1,1 @@
+In order to use this code, copy paste what is written in the motorcontrol.cpp file into the main.cpp file in the TurtleTank codes folder, and then write in a terminal "cd ros_ws", then "catkin build", then "source devel/setup.bash", and finally "rosrun move_turtlesim move_turtlesim"

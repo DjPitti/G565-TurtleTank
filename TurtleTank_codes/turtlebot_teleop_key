@@ -1,0 +1,256 @@
+#!/usr/bin/env python
+
+# HMI for the turtle tank
+
+import rospy
+
+from geometry_msgs.msg import Twist
+from std_msgs.msg import Int8
+from time import sleep
+
+import sys, select, termios, tty
+
+#print statement
+msg = """
+Control The Turtle Tank One!
+---------------------------------------------------
+
+ Moving around:
+   u    i    o
+   j    k    l 
+   m    ,    . 
+space key, k : force stop
+
+speed control:
+t/z&y : increase/decrease max speeds by 10% 	
+g/h : increase/decrease only linear speed by 10%
+b/n : increase/decrease only angular speed by 10%
+
+Paint control:
+q : lower/lift Paint Guard
+w : activate/deactivade pump
+e : open/close Valve
+r : activade/deactivade paint sequence
+
+
+Autonomous Driving:
+1 : staright line of 2m
+2 : circle with 1m radius
+3 : a square with the side length being 2m
+
+
+CTRL-C to quit
+"""
+#driving
+moveBindings = {			
+        'i':(1,0),
+        'o':(1,-1),
+        'j':(0,1),
+        'l':(0,-1),
+        'u':(1,1),
+        ',':(-1,0),
+        '.':(-1,1),
+        'm':(-1,-1),
+           }
+#speed control
+speedBindings={				
+        't':(1.1,1.1),
+        'z':(.9,.9),
+        'y':(.9,.9),    #added y so it also works no matter if the keyboard is german, danish, english
+        'g':(1.1,1),
+        'h':(.9,1),
+
+        'b':(1,1.1),
+        'n':(1,.9),
+          }
+
+
+#function to reconize the key pressed
+def getKey():
+    tty.setraw(sys.stdin.fileno())
+    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+    if rlist:
+        key = sys.stdin.read(1)
+    else:
+        key = ''
+
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+    return key
+
+speed = .2
+turn = 1
+
+def vels(speed,turn):
+    return "currently:\tspeed %s\tturn %s " % (speed,turn)
+
+if __name__=="__main__":
+    settings = termios.tcgetattr(sys.stdin)
+    
+    rospy.init_node('turtlebot_teleop')
+    pub = rospy.Publisher('~cmd_vel', Twist, queue_size=5)
+
+#arduino nodes
+    pub_valve = rospy.Publisher('valve', Int8, queue_size = 10)
+    pub_pump = rospy.Publisher('pump', Int8, queue_size = 10)
+    pub_paint_guard = rospy.Publisher('paint_guard', Int8, queue_size = 10)
+    pub_paint_action = rospy.Publisher('paint_action', Int8, queue_size = 10)
+#straight_line
+    pub_line = rospy.Publisher('path_line', Int8, queue_size = 10)
+#make_circle
+    pub_circle = rospy.Publisher('path_circle', Int8, queue_size = 10)
+#make_boxv
+    pub_box = rospy.Publisher('path_box', Int8, queue_size = 10)
+                    
+
+    x = 0
+    th = 0
+    status = 0
+    count = 0
+    acc = 0.1
+    target_speed = 0
+    target_turn = 0
+    control_speed = 0
+    control_turn = 0
+
+## paint control
+    pump = 0
+    valve = 0
+    paint_guard = 0
+    paint_system = 0
+
+
+    try:
+        print msg
+        print vels(speed,turn)
+        while(1):
+            key = getKey()
+            if key in moveBindings.keys():
+                x = moveBindings[key][0]
+                th = moveBindings[key][1]
+                count = 0
+            elif key in speedBindings.keys():
+                speed = speed * speedBindings[key][0]
+                turn = turn * speedBindings[key][1]
+                count = 0
+
+                print vels(speed,turn)
+                if (status == 14):
+                    print msg
+                status = (status + 1) % 15
+            elif key == ' ' or key == 'k' :
+                x = 0
+                th = 0
+                control_speed = 0
+                control_turn = 0
+
+
+#add new if statements here to exicude the paint controll and auto.
+#pump
+            elif key == 'q':               #valve
+                if (valve == 0):
+                    #print('vavle 1')
+                    pub_valve.publish(1)
+                    sleep(1)
+                    valve = 1
+                else:
+                    #print('vavle 0')
+                    pub_valve.publish(0)
+                    sleep(1)
+                    valve = 0
+
+            elif key == 'w':                #pump
+                if (pump == 0):
+                    #print('pump 1')
+                    pub_pump.publish(1)
+                    sleep(1)
+                    pump = 1
+                else:
+                    #print('pump 0')
+                    pub_pump.publish(0)
+                    sleep(1)
+                    pump = 0;
+
+            elif key == 'e':                #paint_guard
+                if (paint_guard == 0):
+                    #print('paint_guard 1')
+                    pub_paint_guard.publish(1)
+                    sleep(1)
+                    paint_guard = 1
+                else:
+                    #print('paint_guard 0')
+                    pub_paint_guard.publish(0)
+                    sleep(1)
+                    paint_guard = 0;
+
+            elif key == 'r':                #paint_system
+                if (paint_system == 0):
+                    print('paint_system 1')
+                    pub_paint_action.publish(1)
+                    sleep(2)
+                    paint_system = 1
+                else:
+                    print('paint_system 0')
+                    pub_paint_action.publish(0)
+                    sleep(2)
+                    paint_system = 0
+
+
+            elif key == '1':
+                #print('straight line')
+                pub_line.publish(1)
+            elif key == '2':
+                #print('cyrkle')
+                pub_circle.publish(1)
+            elif key == '3':
+                #print('square')
+                pub_box.publish(1)
+	
+
+
+
+            else:
+                count = count + 1
+                if count > 4:
+                    x = 0
+                    th = 0
+                if (key == '\x03'):
+                    break
+
+            target_speed = speed * x
+            target_turn = turn * th
+
+            if target_speed > control_speed:
+                control_speed = min( target_speed, control_speed + 0.02 )
+            elif target_speed < control_speed:
+                control_speed = max( target_speed, control_speed - 0.02 )
+            else:
+                control_speed = target_speed
+
+            if target_turn > control_turn:
+                control_turn = min( target_turn, control_turn + 0.1 )
+            elif target_turn < control_turn:
+                control_turn = max( target_turn, control_turn - 0.1 )
+
+            else:
+                control_turn = target_turn
+
+            twist = Twist()
+            twist.linear.x = control_speed; twist.linear.y = 0; twist.linear.z = 0          #notis the robot can only move along the x axis and rotate around the z
+            twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = control_turn
+            pub.publish(twist)
+
+            #print("loop: {0}".format(count))
+            #print("target: vx: {0}, wz: {1}".format(target_speed, target_turn))
+            #print("publihsed: vx: {0}, wz: {1}".format(twist.linear.x, twist.angular.z))
+
+    except:
+        print ('Error')
+
+    finally:
+        twist = Twist()
+        twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
+        twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 0
+        pub.publish(twist)
+
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+

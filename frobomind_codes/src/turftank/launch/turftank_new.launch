@@ -1,0 +1,165 @@
+<!-- Frobit (Stage) simulation launch file -->
+
+<!--
+To use the keyboard as remote controller (default) make sure that the packages:
+	"keyboard_remote_control" and "keyboard_interface" are active.
+	"wiimote_remote_control" and "wiimote" are commented out.
+
+To use a Nintendo Wiimote as remote controller make sure that the packages:
+	"wiimote_remote_control" and "wiimote" are active.
+	"keyboard_remote_control" and "keyboard_interface" are commented out.
+-->
+
+
+
+<launch>
+
+	<!-- Frobit parameters --> 
+	<param name="diff_steer_wheel_distance" value="0.215"/>
+	<param name="ticks_per_meter_left" value="562" />
+	<param name="ticks_per_meter_right" value="562" />
+	<param name="caster_front" value="true"/>
+
+	<!-- simulation using Stage --> 
+	<node pkg="stage_ros" type="stageros" name="simulator" args="$(find turftank)/stage/turftank_wpt_nav.world"/>
+	<remap from="/fmKnowledge/pose" to="/odom" />
+	<node pkg="twist_stamped_to_twist" name="converter" type="cmd_vel_converter.py">	
+		<param name="cmd_vel_sub" value="/fmCommand/cmd_vel" />
+		<param name="cmd_vel_pub" value="/cmd_vel" />
+	</node>
+
+	<!-- Loading required sensors or platform -->
+    <arg name="enable_rviz" default="true"/>
+    <arg name="enable_edit" default="true"/>
+    <arg name="load_gnss" default="true"/>
+    <arg name="load_fake_joint" default="true"/>
+
+  <!-- Namespace of the robot -->
+    <arg name="robot_namespace" default="/tto_v1"/>
+  
+    <param name="robot_description" command="xacro --inorder '$(find tto_description)/robots/tto_v1.urdf.xacro' load_gnss:=$(arg load_gnss) robot_namespace:=$(arg robot_namespace)" />
+
+   <!-- If visualization is enabled -->
+    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" if="$(arg enable_edit)">
+        <remap from="joint_states" to="$(arg robot_namespace)/joint_states" />
+        <param name="use_gui" value="$(arg load_fake_joint)"/>
+    </node>
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find tto_description)/config/tt_new.rviz" if="$(arg enable_rviz)"/>
+	<node pkg="rviz_path" name="rviz_path" type="rviz_path.py">
+	    <param name="odom" value="/odom" />
+		<param name="path" value="/path" />
+		<param name="pose_sub" value="/fmKnowledge/pose"/>
+		<!-- <param name="cmd_vel_pub" value="/fmCommand/cmd_vel" /> -->
+	</node>
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" if="$(arg enable_edit)">
+        <remap from="joint_states" to="$(arg robot_namespace)/joint_states" />
+    </node>
+
+
+	<!-- rosbag recording -->
+	<!-- <node pkg="rosbag" name="rosbag_record" type="record" args="-a"/> -->
+
+	<group ns="fmSafety">
+		<node pkg="basic_incident_handler" name="incident_handler" type="basic_incident_handler_node.py" output="screen">
+			<param name="deadman_enable" value="True" />
+			<param name="deadman_timeout" value="0.200" />
+			<param name="deadman_sub" value="/fmSafe/deadman" />
+
+		</node>
+	</group>
+
+	<group ns="fmSensors">
+		<!-- This is handled by the Stage simulator -->
+	</group>
+<!-- 	
+	<group ns="fmProcessors"> -->
+		<!-- This is handled by the Stage simulator -->
+
+
+
+	<group ns="fmDecisionMakers">
+		<node pkg="turftank_wptnav_mission" name="wptnav_mission" type="wptnav_mission_node.py" output="screen">
+			<param name="remote_control_sub" value="/fmHMI/remote_control"/>
+			<param name="remote_control_feedback_pub" value="/fmHMI/remote_control_feedback" />			
+			<param name="automode_pub" value="/fmPlan/automode" />
+	    	<param name="deadman_pub" value="/fmSafe/deadman" />
+			<param name="cmd_vel_pub" value="/fmCommand/cmd_vel" />
+			<param name="max_linear_velocity" value="0.7"/>
+			<param name="max_angular_velocity" value="0.6"/>
+			<param name="linear_velocity_step" value="0.1"/>
+			<param name="angular_velocity_step" value="0.2"/>
+		</node>
+
+		<node pkg="keyboard_remote_control" name="kbd_remote" type="keyboard_remote_control_node.py" output="screen" >
+			<param name="keyboard_sub" value="/fmHMI/keyboard"/>
+			<param name="remote_control_pub" value="/fmHMI/remote_control"/>
+		</node>
+	 	<node pkg="keyboard_interface" type="keyboard_node" name="keyboard">
+			<param name="keyboard_pub" value="/fmHMI/keyboard" />
+		</node>
+
+		<!--
+		<node pkg="wiimote_remote_control" name="wiimote_remote" type="wiimote_remote_control_node.py" output="screen" >
+			<param name="wiimote_sub" value="/fmDecisionMakers/joy"/>
+			<param name="remote_control_pub" value="/fmHMI/remote_control"/>
+		</node>
+		<node pkg="wiimote" type="wiimote_node.py" name="wiimote" output="screen" respawn="true">
+			<param name="fixed_wiimote_address" value="00:21:47:F0:56:EC"/> 
+		</node>		
+		-->
+
+	</group>
+
+	<group ns="fmExecutors">
+		<node pkg="turftank_wpt_nav" type="waypoint_navigation_node.py" name="wptnav" output="screen">
+			<param name="automode_sub" value="/fmPlan/automode" />
+			<param name="pose_sub" value="/fmKnowledge/pose" />
+			<param name="remote_control_sub" value="/fmHMI/remote_control" />
+			<param name="cmd_vel_pub" value="/fmCommand/cmd_vel" />
+			<param name="implement_pub" value="/fmCommand/implement" />
+			<param name="status_pub" value="/fmInformation/wptnav_status" />
+			<param name="status_publish_interval" value="1" />
+			<param name="print_debug_information" value="false" />
+
+			<param name="max_linear_velocity" value="1.2"/>
+			<param name="max_angular_velocity" value="0.70"/>
+			
+			<param name="wpt_default_mode" value="MCTE" />
+			<param name="wpt_default_tolerance" value="0.20" />
+			<param name="wpt_default_drive_velocity" value="0.4" />
+			<param name="wpt_default_turn_velocity" value="1.4" />
+			<param name="wpt_default_wait_after_arrival" value="1.0" />
+			<param name="wpt_default_implement_command" value="0.0" />
+
+			<param name="target_ahead" value="0.3" />
+		</node>		
+	</group>
+
+	<group ns="fmControllers">
+		<!-- This is handled by the Stage simulator -->
+	</group>
+
+	<group ns="fmLib">
+		<node pkg="turftank_plot" name="turftank_plot" type="tt_plot_node.py" output="screen" >
+			<param name="pose_sub" value="/fmKnowledge/pose" />
+			<param name="gnss_sub" value="/fmInformation/gpgga_tranmerc" />
+			<param name="odom_sub" value="/fmKnowledge/odom" />
+			<param name="wptnav_status_sub" value="/fmInformation/wptnav_status" />
+			<param name="plot_pose_track" value="true" />
+			<param name="map_trackpoint_threshold" value="0.02" />
+			<param name="map_max_trackpoints" value="50000" />
+			<param name="map_minimum_size" value="5.0" />
+			<param name="map_easting_offset" value="0.0" />
+			<param name="map_northing_offset" value="0.0" />
+			<param name="map_update_frequency" value="10.0" />
+			<param name="map_title" value="Turftank plot" />
+			<param name="map_window_size" value="6.5" />
+			<param name="avatar_extension_front" value="0.29" />
+			<param name="avatar_extension_rear" value="0.06" />
+			<param name="avatar_extension_lateral" value="0.13" />
+		</node>
+	</group>
+	
+</launch>
+
